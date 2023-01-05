@@ -2,21 +2,26 @@ import os
 import pickle
 import random
 from typing import List
+import json
 
 import numpy as np
 from tqdm import tqdm
 import torch
 from nltk.corpus import stopwords
+# from transformers import BertConfig, RobertaForMaskedLM, RobertaTokenizer
 from transformers import BertConfig, BertForMaskedLM, BertTokenizer
+
 
 from utils import set_random_seed
 
 
 stopwords = stopwords.words("english") + [".", ",", "!", "?", "'", '"']
 
-SCORE_FNAME_TEMPLATE = "./data/scored/{}_sorted_by_condition_mlm_dd.pck"
+SCORE_FNAME_TEMPLATE = "./data/scored/roberta_{}_sorted_by_condition_mlm_dd.pck"
 FINAL_NEGATIVE_FNAME = (
-    "./data/negative_dd/dialogues_{}_negative_mask-fill-coherence{}_1.txt"
+    # "./data/negative_dd/dialogues_{}_negative_mask-fill-coherence{}_1.txt"
+    "./data/negative_dd/roberta_piqa_{}_negative_mask-fill-coherence{}_1.txt"
+
 )
 
 softmax = torch.nn.Softmax(dim=0)
@@ -25,8 +30,8 @@ softmax = torch.nn.Softmax(dim=0)
 def calculate_score(
     context: List[str],
     response: str,
-    bert: BertForMaskedLM,
-    tokenizer: BertTokenizer,
+    bert: RobertaForMaskedLM,
+    tokenizer: RobertaTokenizer,
     device,
 ):
     print("=== New example ===")
@@ -36,9 +41,13 @@ def calculate_score(
     assert isinstance(dialog, str) and isinstance(response, str)
 
     encoded_dialog = tokenizer.encode_plus(dialog, return_tensors="pt")
+    # encoded_dialog = tokenizer.encode(dialog, return_tensors="pt")
+
     encoded_dialog = {k: v.to(device) for k, v in encoded_dialog.items()}
 
     encoded_response = tokenizer.encode_plus(response, return_tensors="pt")
+    # encoded_response = tokenizer.encode(response, return_tensors="pt")
+
     encoded_response = {k: v.to(device) for k, v in encoded_response.items()}
 
     response_begin_index_in_dialog = (
@@ -61,6 +70,7 @@ def calculate_score(
         )
         word_list.append(tokenizer.convert_ids_to_tokens([original_token_in_dialog])[0])
         assert original_token_in_dialog == original_token_in_response
+        print("equating stuff")
 
         # Mask the current token in both dialog and response sentence
         encoded_dialog["input_ids"][0][
@@ -100,6 +110,7 @@ def calculate_score(
         == len(diff_score_list)
         == len(encoded_response["input_ids"][0]) - 2
     )
+    print("right before return")
 
     return (
         word_list,
@@ -110,8 +121,8 @@ def calculate_score(
 
 def mask_and_fill_by_threshold(
     text: str,
-    bert: BertForMaskedLM,
-    tokenizer: BertTokenizer,
+    bert: RobertaForMaskedLM,
+    tokenizer: RobertaTokenizer,
     threshold: float,
     device,
     mlm_score,
@@ -120,7 +131,8 @@ def mask_and_fill_by_threshold(
     print("Original Text: {}".format(text))
     context, response, word_list, score_list, sorted_index = mlm_score
     if score_list is None:
-        raise ValueError
+        # raise ValueError
+        return None
     if len(text.split()) < 3:
         return None
     assert len(sorted_index[0]) == len(sorted_index[1]) == len(score_list)
@@ -137,6 +149,12 @@ def mask_and_fill_by_threshold(
         max_length=512,
         truncation=True,
     )
+    # encoded = tokenizer.encode(
+    #     text,
+    #     return_tensors="pt",
+    #     max_length=512,
+    #     truncation=True,
+    # )
     assert len(encoded["input_ids"][0]) == len(word_list) + 2
 
     masked_token_indices = []
@@ -192,16 +210,30 @@ def make_context_and_response_file(setname="train"):
         new_dataset.append([context, response, random.sample(ls, 1)[0][-1]])
     return new_dataset
 
+def make_piqa(setname="train"): # setname can be either train or test
+    mapper = {0:'sol1', 1:'sol2'}
+    query = [json.loads(line) for line in open(f"/media/armaan/AP-HD5/declare/mcqa-without-negatives/data/piqa/{setname}.jsonl").readlines()]
+    labels = [int(line.strip()) for line in open(f"/media/armaan/AP-HD5/declare/mcqa-without-negatives/data/piqa/{setname}-labels.lst").readlines()]
+    
+    questions = [instance["goal"] for instance in query]
+    answers = [instance[mapper[l]] for instance, l in zip(query,labels)]
+
+    new_dataset = [list(a) for a in  zip(questions, answers, random.sample(answers, len(answers)))]
+    
+    return new_dataset
 
 def make_score_file():
-    for setname in ["valid", "train"]:
+    # for setname in ["valid", "train"]:
+    for setname in ["train"]:
+
         final_fname = SCORE_FNAME_TEMPLATE.format(setname)
 
         device = torch.device("cuda")
-        tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-        bert = BertForMaskedLM.from_pretrained("bert-base-uncased").to(device)
+        tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
+        bert = RobertaForMaskedLM.from_pretrained("roberta-base").to(device)
         bert.eval()
-        ls = make_context_and_response_file(setname)
+        # ls = make_context_and_response_file(setname)
+        ls = make_piqa(setname)
         assert all([len(el) == 3 for el in ls])
 
         output = []
@@ -217,8 +249,9 @@ def make_score_file():
                     device,
                 )
             except Exception as err:
-                print("\n" * 30)
+                print("error exception\n" * 10)
                 print(err)
+                print(type(err))
                 words, scores, additional_scores = None, None, None
 
             output.append(
@@ -237,7 +270,9 @@ def make_score_file():
 
 
 def make_negative(threshold: float = 0.5):
-    for setname in ["valid", "train"]:
+    # for setname in ["valid", "train"]:
+    for setname in ["train"]:
+
         threshold_fname = SCORE_FNAME_TEMPLATE.format(setname)
         with open(threshold_fname, "rb") as f:
             score_data = pickle.load(f)
@@ -247,11 +282,13 @@ def make_negative(threshold: float = 0.5):
 
         device = torch.device("cuda")
 
-        tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-        bert = BertForMaskedLM.from_pretrained("bert-base-uncased")
+        tokenizer = RobertaTokenizer.from_pretrained("bert-base-uncased")
+        bert = RobertaForMaskedLM.from_pretrained("bert-base-uncased")
         bert.to(device)
         bert.eval()
-        ls = make_context_and_response_file(setname=setname)
+        # ls = make_context_and_response_file(setname=setname)
+        ls = make_piqa(setname)
+
         assert all([len(el) == 3 for el in ls])
 
         output = []
