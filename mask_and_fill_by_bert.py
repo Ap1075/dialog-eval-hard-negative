@@ -30,8 +30,8 @@ softmax = torch.nn.Softmax(dim=0)
 def calculate_score(
     context: List[str],
     response: str,
-    bert: RobertaForMaskedLM,
-    tokenizer: RobertaTokenizer,
+    bert: BertForMaskedLM,
+    tokenizer: BertTokenizer,
     device,
 ):
     print("=== New example ===")
@@ -121,8 +121,8 @@ def calculate_score(
 
 def mask_and_fill_by_threshold(
     text: str,
-    bert: RobertaForMaskedLM,
-    tokenizer: RobertaTokenizer,
+    bert: BertForMaskedLM,
+    tokenizer: BertTokenizer,
     threshold: float,
     device,
     mlm_score,
@@ -229,8 +229,8 @@ def make_score_file():
         final_fname = SCORE_FNAME_TEMPLATE.format(setname)
 
         device = torch.device("cuda")
-        tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
-        bert = RobertaForMaskedLM.from_pretrained("roberta-base").to(device)
+        tokenizer = BertTokenizer.from_pretrained("roberta-base")
+        bert = BertForMaskedLM.from_pretrained("roberta-base").to(device)
         bert.eval()
         # ls = make_context_and_response_file(setname)
         ls = make_piqa(setname)
@@ -282,8 +282,8 @@ def make_negative(threshold: float = 0.5):
 
         device = torch.device("cuda")
 
-        tokenizer = RobertaTokenizer.from_pretrained("bert-base-uncased")
-        bert = RobertaForMaskedLM.from_pretrained("bert-base-uncased")
+        tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+        bert = BertForMaskedLM.from_pretrained("bert-base-uncased")
         bert.to(device)
         bert.eval()
         # ls = make_context_and_response_file(setname=setname)
