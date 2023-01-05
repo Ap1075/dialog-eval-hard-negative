@@ -17,10 +17,10 @@ from utils import set_random_seed
 
 stopwords = stopwords.words("english") + [".", ",", "!", "?", "'", '"']
 
-SCORE_FNAME_TEMPLATE = "./data/scored/roberta_{}_sorted_by_condition_mlm_dd.pck"
+SCORE_FNAME_TEMPLATE = "./data/scored/bert_{}_sorted_by_condition_mlm_dd.pck"
 FINAL_NEGATIVE_FNAME = (
     # "./data/negative_dd/dialogues_{}_negative_mask-fill-coherence{}_1.txt"
-    "./data/negative_dd/roberta_piqa_{}_negative_mask-fill-coherence{}_1.txt"
+    "./data/negative_dd/bert_piqa_{}_negative_mask-fill-coherence{}_1.txt"
 
 )
 
@@ -229,8 +229,8 @@ def make_score_file():
         final_fname = SCORE_FNAME_TEMPLATE.format(setname)
 
         device = torch.device("cuda")
-        tokenizer = BertTokenizer.from_pretrained("roberta-base")
-        bert = BertForMaskedLM.from_pretrained("roberta-base").to(device)
+        tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+        bert = BertForMaskedLM.from_pretrained("bert-base-uncased").to(device)
         bert.eval()
         # ls = make_context_and_response_file(setname)
         ls = make_piqa(setname)
